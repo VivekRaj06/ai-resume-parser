@@ -1,21 +1,22 @@
-# AI Resume Parser & Job Matcher
+AI Resume Parser & Job Matcher
 
-An AI-powered system that analyzes resumes and matches candidates with job descriptions.
+🚀 Live Demo
+https://ai-resume-parser-vivek.streamlit.app
 
-## Features
+Features
+- PDF/DOCX resume parsing
+- Groq AI-powered analysis
+- Job description matching
+- Match percentage
+- Matching and missing skills
+- Candidate ranking
+- Streamlit web interface
 
-- Extracts information from PDF/DOCX resumes
-- Uses Groq AI for resume parsing
-- Compares resumes with job descriptions
-- Generates match percentages
-- Ranks candidates
-- Uses Pydantic for structured output
-
-## Technologies
-
+Tech Stack
 - Python
 - Groq API
 - Pydantic
+- Streamlit
 - PyPDF
 - python-docx
 - uv
