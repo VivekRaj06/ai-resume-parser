@@ -20,7 +20,7 @@ load_dotenv()
 api_key = os.getenv("GROQ_API_KEY")
 
 if not api_key:
-    st.error("GROQ_API_KEY is missing. Please check your .env file.")
+    st.error("GROQ_API_KEY is missing. Please check your environment variables.")
     st.stop()
 
 client = Groq(api_key=api_key)
@@ -265,16 +265,33 @@ Keep the response concise and easy to read.
 # Streamlit UI
 # -----------------------------
 
+st.set_page_config(
+    page_title="AI Resume Parser & Job Matcher",
+    page_icon="📄",
+    layout="wide"
+)
+
 st.title("AI Resume Parser & Job Matcher")
 
 st.write(
-    "Upload a resume and compare it with a job description."
+    "Upload multiple resumes and compare them with a job description."
 )
 
-resume_file = st.file_uploader(
-    "Upload Resume",
-    type=["pdf", "docx"]
+
+# -----------------------------
+# Upload Resumes
+# -----------------------------
+
+resume_files = st.file_uploader(
+    "Upload Resumes",
+    type=["pdf", "docx"],
+    accept_multiple_files=True
 )
+
+
+# -----------------------------
+# Job Description
+# -----------------------------
 
 job_description = st.text_area(
     "Job Description",
@@ -283,11 +300,15 @@ job_description = st.text_area(
 )
 
 
-if st.button("Analyze Resume"):
+# -----------------------------
+# Analyze
+# -----------------------------
 
-    if resume_file is None:
+if st.button("Analyze Resumes"):
 
-        st.warning("Please upload a resume.")
+    if not resume_files:
+
+        st.warning("Please upload at least one resume.")
 
     elif not job_description.strip():
 
@@ -295,94 +316,250 @@ if st.button("Analyze Resume"):
 
     else:
 
-        with st.spinner("Analyzing resume..."):
+        candidates = []
 
-            # Save uploaded file temporarily
-            suffix = Path(resume_file.name).suffix
+        with st.spinner("Analyzing resumes..."):
 
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=suffix
-            ) as temp_file:
+            try:
 
-                temp_file.write(resume_file.getbuffer())
+                # Parse job description only once
+                job = parse_job_description(job_description)
 
-                temp_path = Path(temp_file.name)
+                # Process every resume
+                for resume_file in resume_files:
 
+                    st.write(
+                        f"Processing: {resume_file.name}"
+                    )
 
-            # Extract resume text
-            if suffix.lower() == ".pdf":
+                    suffix = Path(
+                        resume_file.name
+                    ).suffix.lower()
 
-                resume_text = read_pdf(temp_path)
+                    # Save uploaded file temporarily
+                    with tempfile.NamedTemporaryFile(
+                        delete=False,
+                        suffix=suffix
+                    ) as temp_file:
 
-            else:
+                        temp_file.write(
+                            resume_file.getbuffer()
+                        )
 
-                resume_text = read_docx(temp_path)
+                        temp_path = Path(
+                            temp_file.name
+                        )
 
+                    try:
 
-            # Parse job description
-            job = parse_job_description(job_description)
+                        # Extract resume text
+                        if suffix == ".pdf":
 
-            # Parse resume
-            resume = parse_resume(resume_text)
+                            resume_text = read_pdf(
+                                temp_path
+                            )
 
-            # Calculate score
-            result = final_score(job, resume)
+                        else:
 
+                            resume_text = read_docx(
+                                temp_path
+                            )
 
-        st.success("Analysis completed!")
+                        # Check extracted text
+                        if not resume_text.strip():
 
-        st.divider()
+                            st.warning(
+                                f"Could not extract text from {resume_file.name}"
+                            )
 
-        st.subheader("Candidate")
+                            continue
 
-        st.write(resume.name or "Name not found")
+                        # Parse resume
+                        resume = parse_resume(
+                            resume_text
+                        )
 
-        st.metric(
-            "Match Score",
-            f"{result.score}%"
-        )
+                        # Calculate score
+                        result = final_score(
+                            job,
+                            resume
+                        )
 
-        details = result.details
+                        candidates.append(
+                            {
+                                "filename": resume_file.name,
+                                "resume": resume,
+                                "result": result
+                            }
+                        )
 
-        st.subheader("Matching Skills")
+                    finally:
 
-        matching_skills = details.get(
-            "matching_skills",
-            []
-        )
+                        # Remove temporary file
+                        temp_path.unlink(
+                            missing_ok=True
+                        )
 
-        if matching_skills:
-            st.write(", ".join(matching_skills))
+            except Exception as e:
+
+                st.error(
+                    f"An error occurred: {str(e)}"
+                )
+
+        # -----------------------------
+        # Results
+        # -----------------------------
+
+        if candidates:
+
+            # Sort highest score first
+            candidates.sort(
+                key=lambda x: x["result"].score,
+                reverse=True
+            )
+
+            st.success(
+                f"Successfully analyzed {len(candidates)} resume(s)!"
+            )
+
+            st.divider()
+
+            # -----------------------------
+            # Candidate Ranking
+            # -----------------------------
+
+            st.header("🏆 Candidate Ranking")
+
+            for index, candidate in enumerate(
+                candidates,
+                start=1
+            ):
+
+                resume = candidate["resume"]
+                result = candidate["result"]
+
+                candidate_name = (
+                    resume.name
+                    or candidate["filename"]
+                )
+
+                st.subheader(
+                    f"{index}. {candidate_name}"
+                )
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+
+                    st.metric(
+                        "Match Score",
+                        f"{result.score}%"
+                    )
+
+                with col2:
+
+                    st.write(
+                        "**Resume:**"
+                    )
+
+                    st.write(
+                        candidate["filename"]
+                    )
+
+                details = result.details
+
+                # -----------------------------
+                # Matching Skills
+                # -----------------------------
+
+                st.write(
+                    "### Matching Skills"
+                )
+
+                matching_skills = details.get(
+                    "matching_skills",
+                    []
+                )
+
+                if matching_skills:
+
+                    st.write(
+                        ", ".join(
+                            matching_skills
+                        )
+                    )
+
+                else:
+
+                    st.write(
+                        "No matching skills found."
+                    )
+
+                # -----------------------------
+                # Missing Skills
+                # -----------------------------
+
+                st.write(
+                    "### Missing Important Skills"
+                )
+
+                missing_skills = details.get(
+                    "missing_important_skills",
+                    []
+                )
+
+                if missing_skills:
+
+                    st.write(
+                        ", ".join(
+                            missing_skills
+                        )
+                    )
+
+                else:
+
+                    st.write(
+                        "No major missing skills found."
+                    )
+
+                # -----------------------------
+                # Experience
+                # -----------------------------
+
+                st.write(
+                    "### Experience Requirement"
+                )
+
+                experience_met = details.get(
+                    "experience_requirement_met",
+                    "Not specified"
+                )
+
+                st.write(
+                    experience_met
+                )
+
+                # -----------------------------
+                # Final Verdict
+                # -----------------------------
+
+                st.write(
+                    "### Final Verdict"
+                )
+
+                verdict = details.get(
+                    "final_verdict",
+                    "No verdict available."
+                )
+
+                st.write(
+                    verdict
+                )
+
+                st.divider()
+
         else:
-            st.write("No matching skills found.")
 
-        st.subheader("Missing Important Skills")
-
-        missing_skills = details.get(
-            "missing_important_skills",
-            []
-        )
-
-        if missing_skills:
-            st.write(", ".join(missing_skills))
-        else:
-            st.write("No major missing skills found.")
-
-        st.subheader("Experience Requirement")
-
-        experience_met = details.get(
-            "experience_requirement_met",
-            "Not specified"
-        )
-
-        st.write(experience_met)
-
-        st.subheader("Final Verdict")
-
-        verdict = details.get(
-            "final_verdict",
-            "No verdict available."
-        )
-
-        st.write(verdict)
+            st.warning(
+                "No resumes could be analyzed."
+            )
